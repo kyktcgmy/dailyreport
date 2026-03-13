@@ -5,10 +5,7 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
-    env: {
-      JWT_SECRET: "test-secret-key-for-vitest-only",
-      JWT_EXPIRES_IN: "1h",
-    },
+    setupFiles: ["./tests/setup.ts"],
   },
   resolve: {
     alias: {
