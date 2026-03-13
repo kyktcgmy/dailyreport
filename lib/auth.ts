@@ -1,11 +1,15 @@
 import { SignJWT, jwtVerify } from "jose";
 import { z } from "zod";
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET ?? "dev-secret-change-in-production"
-);
+function getJwtSecret(): Uint8Array {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error("JWT_SECRET 環境変数が設定されていません。");
+  }
+  return new TextEncoder().encode(secret);
+}
 
-export const JWT_EXPIRES_IN = "24h";
+export const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN ?? "24h";
 
 export const UserRoleSchema = z.enum(["sales", "manager"]);
 export type UserRole = z.infer<typeof UserRoleSchema>;
@@ -22,11 +26,11 @@ export async function signJwt(payload: JwtPayload): Promise<string> {
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(JWT_EXPIRES_IN)
-    .sign(JWT_SECRET);
+    .sign(getJwtSecret());
 }
 
 export async function verifyJwt(token: string): Promise<JwtPayload> {
-  const { payload } = await jwtVerify(token, JWT_SECRET);
+  const { payload } = await jwtVerify(token, getJwtSecret());
   return JwtPayloadSchema.parse(payload);
 }
 
