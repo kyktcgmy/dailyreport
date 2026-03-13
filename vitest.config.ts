@@ -1,13 +1,16 @@
+import path from "path";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   resolve: {
-    // tsconfig.json の paths エイリアス（@/*）を Vitest でも解決する
-    // vite-tsconfig-paths プラグインの代わりにネイティブオプションを使用
+    alias: {
+      "@": path.resolve(__dirname, "."),
+    },
   },
   test: {
     globals: true,
     environment: "node",
+    globalSetup: ["./tests/globalSetup.ts"],
     setupFiles: ["./tests/setup.ts"],
     coverage: {
       provider: "v8",
