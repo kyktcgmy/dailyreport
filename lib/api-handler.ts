@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ZodSchema, ZodError } from "zod";
 import { extractBearerToken, verifyJwt, type JwtPayload, type UserRole } from "./auth";
 import { ApiError } from "./errors";
+import { isBlacklisted } from "./token-blacklist";
 
 export type AuthenticatedRequest = NextRequest & {
   user: JwtPayload;
@@ -28,6 +29,10 @@ export function withAuth(handler: AuthenticatedHandler): PlainHandler {
     const token = extractBearerToken(req.headers.get("Authorization"));
     if (!token) {
       return ApiError.unauthorized();
+    }
+
+    if (isBlacklisted(token)) {
+      return ApiError.unauthorized("トークンは無効化されています。");
     }
 
     let user: JwtPayload;
