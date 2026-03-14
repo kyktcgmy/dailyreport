@@ -24,12 +24,13 @@ const QuerySchema = z.object({
   per_page: z.coerce.number().int().min(1).max(100).default(20),
 });
 
-/** 当月初日と今日の日付文字列（YYYY-MM-DD）を返す */
+/** 当月初日と今日の日付文字列（YYYY-MM-DD）を JST 基準で返す */
 function getDefaultDates(): { from: string; to: string } {
-  const today = new Date();
-  const y = today.getUTCFullYear();
-  const m = String(today.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(today.getUTCDate()).padStart(2, "0");
+  // JST (UTC+9) オフセットを加算して「今日の JST 日付」を求める
+  const jstDate = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const y = jstDate.getUTCFullYear();
+  const m = String(jstDate.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(jstDate.getUTCDate()).padStart(2, "0");
   return { from: `${y}-${m}-01`, to: `${y}-${m}-${d}` };
 }
 
@@ -64,21 +65,25 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       }
       where.userId = currentUserId;
     } else {
-      // manager: 部下全員の日報を取得
+      // manager: 自分自身 + 部下全員の日報を取得
       const subordinates = await prisma.user.findMany({
         where: { managerId: currentUserId, deletedAt: null },
         select: { userId: true },
       });
-      const subordinateIds = subordinates.map((u) => u.userId);
+      // manager 自身も閲覧対象に含める
+      const accessibleIds = [
+        currentUserId,
+        ...subordinates.map((u) => u.userId),
+      ];
 
       if (queryUserId !== undefined) {
-        // 指定した user_id が部下でなければ 403
-        if (!subordinateIds.includes(queryUserId)) {
+        // 指定した user_id が自分または部下でなければ 403
+        if (!accessibleIds.includes(queryUserId)) {
           return ApiError.forbidden();
         }
         where.userId = queryUserId;
       } else {
-        where.userId = { in: subordinateIds };
+        where.userId = { in: accessibleIds };
       }
     }
 

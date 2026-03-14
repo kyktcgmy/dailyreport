@@ -136,7 +136,8 @@ describe("GET /api/v1/daily-reports", () => {
     expect(res.status).toBe(403);
     expect(body.error.code).toBe("FORBIDDEN");
 
-    // Prisma のデータ取得は呼ばれないこと
+    // Prisma のデータ取得は一切呼ばれないこと
+    expect(mockDailyReportCount).not.toHaveBeenCalled();
     expect(mockDailyReportFindMany).not.toHaveBeenCalled();
   });
 
@@ -168,10 +169,10 @@ describe("GET /api/v1/daily-reports", () => {
     expect(res.status).toBe(200);
     expect(body.data).toHaveLength(2);
 
-    // 部下の userId で絞られていること
+    // manager 自身(10) + 部下(1, 2) の userId で絞られていること
     expect(mockDailyReportFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ userId: { in: [1, 2] } }),
+        where: expect.objectContaining({ userId: { in: [10, 1, 2] } }),
       })
     );
   });
@@ -405,5 +406,139 @@ describe("GET /api/v1/daily-reports", () => {
     expect(res.status).toBe(200);
     expect(body.data[0].status).toBe("draft");
     expect(body.data[0].submitted_at).toBeNull();
+  });
+
+  // [要修正-5] sales が自分の user_id を明示指定すると 200 が返る
+  it("salesユーザーが自分のuser_idを明示指定すると200で自分の日報を返す", async () => {
+    const token = await signJwt({
+      user_id: 1,
+      email: "yamada@example.com",
+      role: "sales",
+    });
+
+    const report = makeReport({ reportId: 1, userId: 1 });
+    mockDailyReportCount.mockResolvedValue(1);
+    mockDailyReportFindMany.mockResolvedValue([report] as never);
+
+    // user_id=1 のトークンで user_id=1 を指定
+    const req = makeRequest({ user_id: "1" }, token);
+    const res = await GET(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].user.user_id).toBe(1);
+    // userId フィルタが自分のIDで絞られていること
+    expect(mockDailyReportFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ userId: 1 }) })
+    );
+  });
+
+  // [要修正-1] manager が自分のuser_idを指定すると200で自分の日報を返す
+  it("managerユーザーが自分のuser_idを指定すると200で自分の日報を返す", async () => {
+    const token = await signJwt({
+      user_id: 10,
+      email: "manager@example.com",
+      role: "manager",
+    });
+
+    mockUserFindMany.mockResolvedValue([{ userId: 1 }] as never);
+
+    const report = makeReport({ reportId: 5, userId: 10, user: { userId: 10, name: "上長 花子" } });
+    mockDailyReportCount.mockResolvedValue(1);
+    mockDailyReportFindMany.mockResolvedValue([report] as never);
+
+    // manager 自身の user_id を指定
+    const req = makeRequest({ user_id: "10" }, token);
+    const res = await GET(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data).toHaveLength(1);
+    expect(mockDailyReportFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ userId: 10 }) })
+    );
+  });
+});
+
+// [要修正-3] バリデーション異常系テスト
+describe("GET /api/v1/daily-reports - バリデーションエラー", () => {
+  it("fromがYYYY-MM-DD形式でない場合は400 VALIDATION_ERRORを返す", async () => {
+    const token = await signJwt({
+      user_id: 1,
+      email: "yamada@example.com",
+      role: "sales",
+    });
+
+    const req = makeRequest({ from: "2026-3-1" }, token); // ゼロ埋めなし
+    const res = await GET(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(mockDailyReportFindMany).not.toHaveBeenCalled();
+  });
+
+  it("toがYYYY-MM-DD形式でない場合は400 VALIDATION_ERRORを返す", async () => {
+    const token = await signJwt({
+      user_id: 1,
+      email: "yamada@example.com",
+      role: "sales",
+    });
+
+    const req = makeRequest({ to: "20260310" }, token); // ハイフンなし
+    const res = await GET(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("statusが不正値の場合は400 VALIDATION_ERRORを返す", async () => {
+    const token = await signJwt({
+      user_id: 1,
+      email: "yamada@example.com",
+      role: "sales",
+    });
+
+    const req = makeRequest({ status: "invalid" }, token);
+    const res = await GET(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(mockDailyReportFindMany).not.toHaveBeenCalled();
+  });
+
+  it("page=0の場合は400 VALIDATION_ERRORを返す", async () => {
+    const token = await signJwt({
+      user_id: 1,
+      email: "yamada@example.com",
+      role: "sales",
+    });
+
+    const req = makeRequest({ page: "0" }, token);
+    const res = await GET(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(mockDailyReportFindMany).not.toHaveBeenCalled();
+  });
+
+  it("per_page=200はmax(100)超過で400 VALIDATION_ERRORを返す", async () => {
+    const token = await signJwt({
+      user_id: 1,
+      email: "yamada@example.com",
+      role: "sales",
+    });
+
+    const req = makeRequest({ per_page: "200" }, token);
+    const res = await GET(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(mockDailyReportFindMany).not.toHaveBeenCalled();
   });
 });
