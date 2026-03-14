@@ -166,9 +166,10 @@ async function getCommentCounts(
 
 const VisitRecordInputSchema = z.object({
   customer_id: z.number({ required_error: "customer_id は必須です。" }).int().positive(),
+  // [要修正-2] 有効な時刻範囲（00:00〜23:59）のみ受け付ける
   visited_at: z
     .string()
-    .regex(/^\d{2}:\d{2}$/, "visited_at は HH:MM 形式で入力してください。"),
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "visited_at は HH:MM 形式（00:00〜23:59）で入力してください。"),
   visit_content: z.string().min(1, "visit_content は必須です。"),
   attendee_user_ids: z.array(z.number().int().positive()).default([]),
 });
@@ -184,9 +185,14 @@ const PlanInputSchema = z.object({
 });
 
 const CreateDailyReportSchema = z.object({
+  // [要修正-1] フォーマットに加えて実在する日付であることを検証する
   report_date: z
     .string({ required_error: "report_date は必須です。" })
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "report_date は YYYY-MM-DD 形式で入力してください。"),
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "report_date は YYYY-MM-DD 形式で入力してください。")
+    .refine(
+      (val) => !isNaN(new Date(`${val}T00:00:00.000Z`).getTime()),
+      "report_date に存在しない日付が指定されています。"
+    ),
   status: z.enum(["draft", "submitted"]).default("draft"),
   visit_records: z.array(VisitRecordInputSchema).default([]),
   problems: z.array(ProblemInputSchema).default([]),
@@ -231,9 +237,11 @@ export const POST = withSalesRole(async (req: AuthenticatedRequest) => {
           },
         });
 
-        if (vr.attendee_user_ids.length > 0) {
+        // [要修正-4] 重複IDを除去して @@unique([visitId, userId]) 違反を防ぐ
+        const uniqueAttendeeIds = [...new Set(vr.attendee_user_ids)];
+        if (uniqueAttendeeIds.length > 0) {
           await tx.visitAttendee.createMany({
-            data: vr.attendee_user_ids.map((uid) => ({
+            data: uniqueAttendeeIds.map((uid) => ({
               visitId: visitRecord.visitId,
               userId: uid,
             })),
@@ -272,6 +280,13 @@ export const POST = withSalesRole(async (req: AuthenticatedRequest) => {
     );
   } catch (error) {
     if (error instanceof DuplicateReportError) {
+      return ApiError.duplicateReport();
+    }
+    // [要修正-3] 同時リクエスト時のユニーク制約違反（P2002）も DUPLICATE_REPORT に変換する
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
       return ApiError.duplicateReport();
     }
     return ApiError.internal();

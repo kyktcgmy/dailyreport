@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
+import { Prisma } from "@prisma/client";
 import { signJwt } from "@/lib/auth";
 
 // Prisma をモック
@@ -129,13 +130,14 @@ describe("POST /api/v1/daily-reports", () => {
         }),
       })
     );
-    // 訪問記録が作成されること
+    // 訪問記録が正しいデータで作成されること（visitedAt の DateTime 変換も検証）
     expect(mockTx.visitRecord.create).toHaveBeenCalledTimes(1);
     expect(mockTx.visitRecord.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           customerId: 10,
           visitContent: "新製品のデモを実施。好感触。",
+          visitedAt: new Date("2026-03-10T10:00:00.000Z"),
         }),
       })
     );
@@ -561,6 +563,147 @@ describe("POST /api/v1/daily-reports", () => {
 
     expect(res.status).toBe(500);
     expect(body.error.code).toBe("INTERNAL_SERVER_ERROR");
+  });
+
+  // [要修正-1] report_date に存在しない日付を指定すると 400
+  it("report_dateに存在しない日付（2026-13-01）を指定すると400 VALIDATION_ERRORを返す", async () => {
+    const token = await signJwt({
+      user_id: 1,
+      email: "yamada@example.com",
+      role: "sales",
+    });
+
+    const req = makePostRequest(
+      {
+        report_date: "2026-13-01", // 月が13で存在しない日付
+        visit_records: [],
+      },
+      token
+    );
+
+    const res = await POST(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  // [要修正-2] visited_at に無効な時刻を指定すると 400
+  it("visited_atに無効な時刻（25:00）を指定すると400 VALIDATION_ERRORを返す", async () => {
+    const token = await signJwt({
+      user_id: 1,
+      email: "yamada@example.com",
+      role: "sales",
+    });
+
+    const req = makePostRequest(
+      {
+        report_date: "2026-03-10",
+        visit_records: [
+          { customer_id: 10, visited_at: "25:00", visit_content: "訪問内容" },
+        ],
+      },
+      token
+    );
+
+    const res = await POST(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  // [要修正-2] visited_at に "99:99" のような明らかな不正値
+  it("visited_atに99:99を指定すると400 VALIDATION_ERRORを返す", async () => {
+    const token = await signJwt({
+      user_id: 1,
+      email: "yamada@example.com",
+      role: "sales",
+    });
+
+    const req = makePostRequest(
+      {
+        report_date: "2026-03-10",
+        visit_records: [
+          { customer_id: 10, visited_at: "99:99", visit_content: "訪問内容" },
+        ],
+      },
+      token
+    );
+
+    const res = await POST(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  // [要修正-3] P2002（ユニーク制約違反）が DUPLICATE_REPORT になる
+  it("トランザクション内でP2002が発生した場合は400 DUPLICATE_REPORTを返す（競合状態対応）", async () => {
+    const token = await signJwt({
+      user_id: 1,
+      email: "yamada@example.com",
+      role: "sales",
+    });
+
+    // 実際の PrismaClientKnownRequestError インスタンスを生成
+    const p2002Error = new Prisma.PrismaClientKnownRequestError(
+      "Unique constraint failed on the constraint: `daily_reports_user_id_report_date_key`",
+      { code: "P2002", clientVersion: "5.0.0" }
+    );
+    mockTransaction.mockRejectedValue(p2002Error);
+
+    const req = makePostRequest(
+      {
+        report_date: "2026-03-10",
+        visit_records: [],
+      },
+      token
+    );
+
+    const res = await POST(req);
+    const body = await res.json();
+
+    // 同時リクエスト競合は DUPLICATE_REPORT として返ること
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("DUPLICATE_REPORT");
+  });
+
+  // [要修正-4] attendee_user_ids に重複IDを渡してもエラーにならない（デデュープ）
+  it("attendee_user_idsに重複したIDを指定しても201を返し重複なしで作成される", async () => {
+    const token = await signJwt({
+      user_id: 1,
+      email: "yamada@example.com",
+      role: "sales",
+    });
+
+    const req = makePostRequest(
+      {
+        report_date: "2026-03-10",
+        visit_records: [
+          {
+            customer_id: 10,
+            visited_at: "10:00",
+            visit_content: "訪問内容",
+            attendee_user_ids: [2, 3, 2], // userId=2 が重複
+          },
+        ],
+      },
+      token
+    );
+
+    const res = await POST(req);
+
+    expect(res.status).toBe(201);
+    // 重複を除いた [2, 3] で createMany が呼ばれること
+    expect(mockTx.visitAttendee.createMany).toHaveBeenCalledWith({
+      data: [
+        { visitId: 1, userId: 2 },
+        { visitId: 1, userId: 3 },
+      ],
+    });
   });
 
   // 追加: 同行者なしの場合は visitAttendee.createMany が呼ばれない
