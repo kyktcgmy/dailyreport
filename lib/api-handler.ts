@@ -8,7 +8,7 @@ export type AuthenticatedRequest = NextRequest & {
   user: JwtPayload;
 };
 
-type RouteContext = { params: Promise<Record<string, string>> };
+export type RouteContext = { params: Promise<Record<string, string>> };
 
 type AuthenticatedHandler = (
   req: AuthenticatedRequest,
