@@ -47,7 +47,7 @@ const mockTx = {
     deleteMany: vi.fn(),
   },
   dailyReport: {
-    update: vi.fn(),
+    updateMany: vi.fn(),
   },
 };
 
@@ -113,7 +113,7 @@ beforeEach(async () => {
   mockTx.visitAttendee.deleteMany.mockResolvedValue({ count: 0 });
   mockTx.problem.deleteMany.mockResolvedValue({ count: 0 });
   mockTx.plan.deleteMany.mockResolvedValue({ count: 0 });
-  mockTx.dailyReport.update.mockResolvedValue({ reportId: 42 });
+  mockTx.dailyReport.updateMany.mockResolvedValue({ count: 1 });
 
   vi.mocked(prisma.$transaction).mockImplementation(async (fn) => fn(mockTx as never));
 });
@@ -135,10 +135,10 @@ describe("PUT /api/v1/daily-reports/:report_id", () => {
     expect(mockTx.problem.deleteMany).toHaveBeenCalledWith({ where: { reportId: 42 } });
     expect(mockTx.plan.deleteMany).toHaveBeenCalledWith({ where: { reportId: 42 } });
 
-    // 日報本体が更新されること
-    expect(mockTx.dailyReport.update).toHaveBeenCalledWith(
+    // 日報本体が draft 条件付きで更新されること（TOCTOU 対策）
+    expect(mockTx.dailyReport.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { reportId: 42 },
+        where: { reportId: 42, status: "draft" },
         data: expect.objectContaining({
           reportDate: new Date("2026-03-10T00:00:00.000Z"),
           status: "draft",
@@ -365,6 +365,34 @@ describe("PUT /api/v1/daily-reports/:report_id", () => {
       ...validBody,
       visit_records: [{ customer_id: 10, visited_at: "25:00", visit_content: "内容", attendee_user_ids: [] }],
     });
+    const ctx = makeParams(42);
+
+    const res = await PUT(req, ctx);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  // [要修正-1] TOCTOU 競合: tx 内で updateMany の count=0 は 403 REPORT_ALREADY_SUBMITTED
+  it("トランザクション内でupdateManyのcountが0の場合（並行submit競合）は403 REPORT_ALREADY_SUBMITTEDを返す", async () => {
+    // 並行して submit が完了し draft → submitted になったケース
+    mockTx.dailyReport.updateMany.mockResolvedValue({ count: 0 });
+
+    const req = makeRequest(42, salesToken, validBody);
+    const ctx = makeParams(42);
+
+    const res = await PUT(req, ctx);
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.error.code).toBe("REPORT_ALREADY_SUBMITTED");
+  });
+
+  // [要修正-2] status: "submitted" をボディで指定すると 400 VALIDATION_ERROR
+  it("ボディにstatus: \"submitted\"を指定すると400 VALIDATION_ERRORを返す", async () => {
+    const req = makeRequest(42, salesToken, { ...validBody, status: "submitted" });
     const ctx = makeParams(42);
 
     const res = await PUT(req, ctx);

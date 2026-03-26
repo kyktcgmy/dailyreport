@@ -42,11 +42,15 @@ const UpdateDailyReportSchema = z.object({
       (val) => !isNaN(new Date(`${val}T00:00:00.000Z`).getTime()),
       "report_date に存在しない日付が指定されています。"
     ),
-  status: z.enum(["draft", "submitted"]).default("draft"),
+  // [要修正-2] PUT は下書き更新専用エンドポイント。submitted への遷移は POST /submit で行う
+  status: z.literal("draft").default("draft"),
   visit_records: z.array(VisitRecordInputSchema).default([]),
   problems: z.array(ProblemInputSchema).default([]),
   plans: z.array(PlanInputSchema).default([]),
 });
+
+/** 並行リクエストによる submitted 状態への変化を検知するセンチネルエラー */
+class ReportAlreadySubmittedError extends Error {}
 
 export const PUT = withSalesRole(async (req: AuthenticatedRequest, ctx: RouteContext) => {
   const { report_id } = await ctx.params;
@@ -100,11 +104,13 @@ export const PUT = withSalesRole(async (req: AuthenticatedRequest, ctx: RouteCon
       await tx.problem.deleteMany({ where: { reportId } });
       await tx.plan.deleteMany({ where: { reportId } });
 
-      // 日報本体を更新
-      await tx.dailyReport.update({
-        where: { reportId },
+      // [要修正-1] 日報本体を更新（status: "draft" を条件に加え TOCTOU 競合を防ぐ）
+      const result = await tx.dailyReport.updateMany({
+        where: { reportId, status: "draft" },
         data: { reportDate: new Date(`${report_date}T00:00:00.000Z`), status },
       });
+      // 並行して POST /submit が実行され submitted になっていた場合
+      if (result.count === 0) throw new ReportAlreadySubmittedError();
 
       // 訪問記録・同行者を再作成
       for (const vr of visit_records) {
@@ -154,6 +160,9 @@ export const PUT = withSalesRole(async (req: AuthenticatedRequest, ctx: RouteCon
 
     return NextResponse.json({ data: { report_id: reportId } });
   } catch (error) {
+    if (error instanceof ReportAlreadySubmittedError) {
+      return ApiError.reportAlreadySubmitted();
+    }
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
