@@ -75,8 +75,8 @@ const mockReport = {
     {
       visitId: 101,
       customerId: 10,
-      // 10:00 JST = 01:00 UTC
-      visitedAt: new Date("2026-03-10T01:00:00.000Z"),
+      // ユーザーが "10:00" と入力 → POST が 10:00Z として格納 → GET でそのまま "10:00" が返る
+      visitedAt: new Date("2026-03-10T10:00:00.000Z"),
       visitContent: "製品説明",
       customer: { customerId: 10, name: "山田花子", companyName: "株式会社A" },
       attendees: [
@@ -138,7 +138,7 @@ describe("GET /api/v1/daily-reports/:report_id", () => {
       name: "山田花子",
       company_name: "株式会社A",
     });
-    expect(vr.visited_at).toBe("01:00"); // UTC時刻で返る
+    expect(vr.visited_at).toBe("10:00");
     expect(vr.visit_content).toBe("製品説明");
     expect(vr.attendees).toEqual([{ user_id: 2, name: "佐藤次郎" }]);
 

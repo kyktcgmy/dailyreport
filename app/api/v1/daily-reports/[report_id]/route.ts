@@ -29,6 +29,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest, ctx: RouteContext)
             customer: { select: { customerId: true, name: true, companyName: true } },
             attendees: {
               include: { user: { select: { userId: true, name: true } } },
+              orderBy: { userId: "asc" },
             },
           },
           orderBy: { visitedAt: "asc" },
