@@ -83,7 +83,7 @@ const UpdateUserBodySchema = z
   .object({
     name: z.string().trim().min(1, "name は必須です。"),
     email: z.string().email("email の形式が正しくありません。"),
-    password: z.string().min(1).optional(),
+    password: z.string().min(8, "password は8文字以上で入力してください。").optional(),
     role: z.enum(["sales", "manager"], { required_error: "role は必須です。" }),
     manager_id: z.number().int().positive().optional(),
   })
@@ -118,10 +118,10 @@ export const PUT = withManagerRole(async (req: AuthenticatedRequest, ctx: RouteC
       return ApiError.notFound("指定されたユーザーが存在しません。");
     }
 
-    // manager_id が指定された場合は上長の存在確認
+    // manager_id が指定された場合は上長の存在確認 + manager ロールであることを確認
     if (manager_id !== undefined) {
       const manager = await prisma.user.findUnique({
-        where: { userId: manager_id, deletedAt: null },
+        where: { userId: manager_id, deletedAt: null, role: "manager" },
         select: { userId: true },
       });
       if (!manager) {

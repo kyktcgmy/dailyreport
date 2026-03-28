@@ -156,6 +156,47 @@ describe("PUT /api/v1/users/:user_id", () => {
     expect(mockUserUpdate).not.toHaveBeenCalled();
   });
 
+  it("manager_idにsalesロールのユーザーを指定すると400 VALIDATION_ERRORを返す", async () => {
+    // 1回目（対象ユーザー存在確認）は成功、2回目（manager_id確認）はrole不一致でnull
+    mockUserFindUnique
+      .mockResolvedValueOnce({ userId: 1 } as never)
+      .mockResolvedValueOnce(null);
+
+    const req = makePutRequest(
+      "1",
+      { name: "山田 太郎", email: "taro@example.com", role: "sales", manager_id: SALES_USER_ID },
+      managerToken
+    );
+    const res = await PUT(req, makeContext("1"));
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(body.error.details[0].field).toBe("manager_id");
+    expect(mockUserUpdate).not.toHaveBeenCalled();
+
+    // role: "manager" 条件が WHERE 句に含まれること
+    expect(mockUserFindUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ role: "manager" }),
+      })
+    );
+  });
+
+  it("passwordが7文字以下の場合は400 VALIDATION_ERRORを返す", async () => {
+    const req = makePutRequest(
+      "1",
+      { name: "山田 太郎", email: "taro@example.com", password: "short7", role: "sales", manager_id: MANAGER_USER_ID },
+      managerToken
+    );
+    const res = await PUT(req, makeContext("1"));
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(mockUserUpdate).not.toHaveBeenCalled();
+  });
+
   it("メールアドレス重複で更新した場合は400 VALIDATION_ERRORを返す", async () => {
     const duplicateError = new Prisma.PrismaClientKnownRequestError(
       "Unique constraint failed on the fields: (`email`)",

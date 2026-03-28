@@ -89,7 +89,7 @@ describe("POST /api/v1/users", () => {
   // USR-102: managerユーザー正常登録 (role=manager, manager_id不要)
   it("USR-102: role=manager で manager_id を省略して登録すると201を返す", async () => {
     const req = makePostRequest(
-      { name: "上長 花子", email: "hanako@example.com", password: "pass456", role: "manager" },
+      { name: "上長 花子", email: "hanako@example.com", password: "pass4567", role: "manager" },
       managerToken
     );
     const res = await POST(req);
@@ -184,6 +184,43 @@ describe("POST /api/v1/users", () => {
     expect(res.status).toBe(400);
     expect(body.error.code).toBe("VALIDATION_ERROR");
     expect(body.error.details[0].field).toBe("manager_id");
+    expect(mockUserCreate).not.toHaveBeenCalled();
+  });
+
+  it("manager_idにsalesロールのユーザーを指定すると400 VALIDATION_ERRORを返す", async () => {
+    // role: "manager" 条件に一致しないため findUnique が null を返す
+    mockUserFindUnique.mockResolvedValue(null);
+
+    const req = makePostRequest(
+      { name: "山田 太郎", email: "taro@example.com", password: "password123", role: "sales", manager_id: SALES_USER_ID },
+      managerToken
+    );
+    const res = await POST(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(body.error.details[0].field).toBe("manager_id");
+    expect(mockUserCreate).not.toHaveBeenCalled();
+
+    // role: "manager" 条件が WHERE 句に含まれること
+    expect(mockUserFindUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ role: "manager" }),
+      })
+    );
+  });
+
+  it("passwordが7文字以下の場合は400 VALIDATION_ERRORを返す", async () => {
+    const req = makePostRequest(
+      { name: "山田 太郎", email: "taro@example.com", password: "short7", role: "sales", manager_id: MANAGER_USER_ID },
+      managerToken
+    );
+    const res = await POST(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
     expect(mockUserCreate).not.toHaveBeenCalled();
   });
 
