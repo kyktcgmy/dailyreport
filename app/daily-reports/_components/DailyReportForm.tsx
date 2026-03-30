@@ -2,7 +2,7 @@
 
 import { use, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { useForm, useFieldArray } from "react-hook-form"
+import { useForm, useFieldArray, useWatch, type Control } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { getToken, removeToken } from "@/lib/auth-client"
@@ -105,6 +105,34 @@ function getTodayString(): string {
   return `${y}-${m}-${d}`
 }
 
+// ─── 同行者チェックボックス（useWatch で制御済みコンポーネント） ────────────────
+
+function AttendeeCheckbox({
+  control,
+  visitIndex,
+  userId,
+  onToggle,
+}: {
+  control: Control<FormValues>
+  visitIndex: number
+  userId: number
+  onToggle: (userId: number, checked: boolean) => void
+}) {
+  const currentIds = useWatch({
+    control,
+    name: `visit_records.${visitIndex}.attendee_user_ids`,
+  }) as number[]
+
+  return (
+    <input
+      type="checkbox"
+      className="h-3.5 w-3.5"
+      checked={currentIds.includes(userId)}
+      onChange={(e) => onToggle(userId, e.target.checked)}
+    />
+  )
+}
+
 // ─── コンポーネント ───────────────────────────────────────────────────────────
 
 export function DailyReportForm(props: Props) {
@@ -170,8 +198,8 @@ export function DailyReportForm(props: Props) {
       return
     }
 
-    // manager ロールが新規作成ページにアクセスした場合はダッシュボードへ
-    if (props.mode === "new" && payload.role === "manager") {
+    // manager ロールは日報作成・編集ページにアクセスできない
+    if (payload.role === "manager") {
       router.replace("/dashboard")
       return
     }
@@ -199,7 +227,7 @@ export function DailyReportForm(props: Props) {
       }
 
       // 顧客一覧の取得
-      const custRes = await fetch("/api/v1/customers?limit=100", { headers })
+      const custRes = await fetch("/api/v1/customers?per_page=100", { headers })
       if (custRes.status === 401) {
         removeToken()
         router.replace("/login")
@@ -211,7 +239,7 @@ export function DailyReportForm(props: Props) {
       }
 
       // 同行者一覧の取得（manager 専用 API: 403 の場合はグレースフルデグレード）
-      const usersRes = await fetch("/api/v1/users?limit=100", { headers })
+      const usersRes = await fetch("/api/v1/users?per_page=100", { headers })
       if (usersRes.status === 401) {
         removeToken()
         router.replace("/login")
@@ -352,6 +380,8 @@ export function DailyReportForm(props: Props) {
 
     if (reportId !== null) {
       showToast("保存しました")
+    } else {
+      showToast("保存に失敗しました。もう一度お試しください。")
     }
   }
 
@@ -390,6 +420,8 @@ export function DailyReportForm(props: Props) {
 
     if (submitRes.ok) {
       router.push(`/daily-reports/${reportId}`)
+    } else {
+      showToast("提出に失敗しました。もう一度お試しください。")
     }
   })
 
@@ -578,45 +610,36 @@ export function DailyReportForm(props: Props) {
                         <div className="flex flex-wrap gap-2">
                           {userOptions
                             .filter((u) => u.user_id !== authPayload?.user_id)
-                            .map((u) => {
-                              const currentIds =
-                                (getValues(
-                                  `visit_records.${index}.attendee_user_ids`
-                                ) as number[]) ?? []
-                              const checked = currentIds.includes(u.user_id)
-                              return (
-                                <label
-                                  key={u.user_id}
-                                  className="flex cursor-pointer items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    className="h-3.5 w-3.5"
-                                    defaultChecked={checked}
-                                    onChange={(e) => {
-                                      const ids = [
-                                        ...((getValues(
-                                          `visit_records.${index}.attendee_user_ids`
-                                        ) as number[]) ?? []),
-                                      ]
-                                      if (e.target.checked) {
-                                        if (!ids.includes(u.user_id)) {
-                                          ids.push(u.user_id)
-                                        }
-                                      } else {
-                                        const idx = ids.indexOf(u.user_id)
-                                        if (idx !== -1) ids.splice(idx, 1)
-                                      }
-                                      setValue(
-                                        `visit_records.${index}.attendee_user_ids`,
-                                        ids
-                                      )
-                                    }}
-                                  />
-                                  {u.name}
-                                </label>
-                              )
-                            })}
+                            .map((u) => (
+                              <label
+                                key={u.user_id}
+                                className="flex cursor-pointer items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
+                              >
+                                <AttendeeCheckbox
+                                  control={control}
+                                  visitIndex={index}
+                                  userId={u.user_id}
+                                  onToggle={(userId, checked) => {
+                                    const ids = [
+                                      ...((getValues(
+                                        `visit_records.${index}.attendee_user_ids`
+                                      ) as number[]) ?? []),
+                                    ]
+                                    if (checked) {
+                                      if (!ids.includes(userId)) ids.push(userId)
+                                    } else {
+                                      const idx = ids.indexOf(userId)
+                                      if (idx !== -1) ids.splice(idx, 1)
+                                    }
+                                    setValue(
+                                      `visit_records.${index}.attendee_user_ids`,
+                                      ids
+                                    )
+                                  }}
+                                />
+                                {u.name}
+                              </label>
+                            ))}
                         </div>
                       </div>
                     )}
