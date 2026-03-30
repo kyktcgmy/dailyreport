@@ -144,9 +144,15 @@ export function SalesDashboard() {
                 {formatStatus(todayReport.status)}
               </span>
             </div>
-            <Button size="sm" onClick={() => router.push("/daily-reports/new")}>
-              今日の日報を作成
-            </Button>
+            {/* 下書きの場合のみ編集ボタンを表示。提出済みは操作不要 */}
+            {todayReport.status === "draft" && (
+              <Button
+                size="sm"
+                onClick={() => router.push(`/daily-reports/${todayReport.report_id}`)}
+              >
+                編集する
+              </Button>
+            )}
           </div>
         ) : null}
       </section>

@@ -66,7 +66,8 @@ export function ManagerDashboard() {
       try {
         // 提出済み日報全件と当日日報を並行取得
         const [submittedRes, todayRes] = await Promise.all([
-          fetchWithAuth(`/api/v1/daily-reports?status=submitted`, router),
+          // per_page=100 で全件に近い取得。100件超の場合は近似値になる
+          fetchWithAuth(`/api/v1/daily-reports?status=submitted&per_page=100`, router),
           fetchWithAuth(`/api/v1/daily-reports?from=${today}&to=${today}`, router),
         ])
 
