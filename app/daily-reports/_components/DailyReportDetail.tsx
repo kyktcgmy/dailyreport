@@ -89,6 +89,7 @@ export function DailyReportDetail({ reportIdParam }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({})
   const [commentSubmitting, setCommentSubmitting] = useState<Record<string, boolean>>({})
+  const [toast, setToast] = useState<string | null>(null)
 
   // ─── データ取得 ───────────────────────────────────────────────────────────────
 
@@ -140,6 +141,13 @@ export function DailyReportDetail({ reportIdParam }: Props) {
     void fetchReport()
   }, [fetchReport, router])
 
+  // ─── トースト表示 ─────────────────────────────────────────────────────────────
+
+  function showToast(message: string) {
+    setToast(message)
+    setTimeout(() => setToast(null), 3000)
+  }
+
   // ─── コメント送信ハンドラ ─────────────────────────────────────────────────────
 
   async function handleCommentSubmit(type: "problem" | "plan", targetId: number) {
@@ -180,6 +188,8 @@ export function DailyReportDetail({ reportIdParam }: Props) {
     if (res.ok) {
       setCommentInputs((prev) => ({ ...prev, [key]: "" }))
       await fetchReport()
+    } else {
+      showToast("コメントの送信に失敗しました。もう一度お試しください。")
     }
   }
 
@@ -207,6 +217,17 @@ export function DailyReportDetail({ reportIdParam }: Props) {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* トースト */}
+      {toast !== null && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed left-1/2 top-4 z-50 -translate-x-1/2 rounded-lg bg-destructive/10 px-4 py-2 text-destructive shadow-md"
+        >
+          {toast}
+        </div>
+      )}
+
       {/* ─── ヘッダー ─── */}
       <header className="sticky top-0 z-10 border-b border-border bg-card">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
