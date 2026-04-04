@@ -77,14 +77,20 @@ export function DailyReportList() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // フォームの状態（URL パラメータから初期化）
-  const [formFrom, setFormFrom] = useState(() => searchParams.get("from") ?? getDefaultFrom())
-  const [formTo, setFormTo] = useState(() => searchParams.get("to") ?? getTodayString())
-  const [formUserId, setFormUserId] = useState(() => searchParams.get("user_id") ?? "")
-  const [formStatus, setFormStatus] = useState<"" | "draft" | "submitted">(() => {
+  // フォームの状態
+  const [formFrom, setFormFrom] = useState(getDefaultFrom())
+  const [formTo, setFormTo] = useState(getTodayString())
+  const [formUserId, setFormUserId] = useState("")
+  const [formStatus, setFormStatus] = useState<"" | "draft" | "submitted">("")
+
+  // URL クエリパラメータが変わったらフォームを同期する
+  useEffect(() => {
+    setFormFrom(searchParams.get("from") ?? getDefaultFrom())
+    setFormTo(searchParams.get("to") ?? getTodayString())
+    setFormUserId(searchParams.get("user_id") ?? "")
     const s = searchParams.get("status")
-    return s === "draft" || s === "submitted" ? s : ""
-  })
+    setFormStatus(s === "draft" || s === "submitted" ? s : "")
+  }, [searchParams])
 
   // ─── 認証チェック & 上長用担当者リスト取得 ────────────────────────────────────
 
