@@ -282,6 +282,7 @@ export function CustomerForm(props: Props) {
 
   async function handleDelete() {
     if (props.mode !== "edit" || customerId === null) return
+    if (deleting) return
 
     const token = getToken()
     if (!token) {
@@ -498,9 +499,10 @@ export function CustomerForm(props: Props) {
                         <AlertDialogCancel>キャンセル</AlertDialogCancel>
                         <AlertDialogAction
                           variant="destructive"
+                          disabled={deleting}
                           onClick={() => void handleDelete()}
                         >
-                          削除する
+                          {deleting ? "削除中..." : "削除する"}
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
