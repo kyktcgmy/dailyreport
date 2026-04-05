@@ -1,0 +1,13 @@
+.dockerignore
+.git
+.gitignore
+.next
+.env
+.env*.local
+.env.test
+node_modules
+npm-debug.log*
+coverage
+doc
+tests
+*.tsbuildinfo
