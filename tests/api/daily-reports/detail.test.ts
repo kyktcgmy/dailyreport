@@ -165,26 +165,27 @@ describe("GET /api/v1/daily-reports/:report_id", () => {
     expect(plan.comments).toEqual([]);
   });
 
-  // DR-202: 正常系 - 部下の日報詳細を取得できる（manager）
-  it("DR-202: managerユーザーが部下の日報詳細を取得すると200を返す", async () => {
-    // 部下として SALES_USER_ID を返す
-    mockUserFindMany.mockResolvedValue([
-      { userId: SALES_USER_ID },
-    ] as never);
+  // DR-202: 正常系 - 訪問記録・コメントが正しく含まれる（sales）
+  // problems[].comments に上長のコメントが紐付いて返されることを検証
+  it("DR-202: salesユーザーがコメント付き日報を取得するとproblems[].commentsにコメント内容が含まれる", async () => {
+    mockCommentFindMany.mockResolvedValue(mockComments as never);
 
-    const req = makeRequest(42, managerToken);
+    const req = makeRequest(42, salesToken);
     const res = await GET(req, makeParams(42));
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body.data.report_id).toBe(42);
-    expect(body.data.user.user_id).toBe(SALES_USER_ID);
-
-    // 部下照会クエリが正しく呼ばれること
-    expect(mockUserFindMany).toHaveBeenCalledWith({
-      where: { managerId: MANAGER_USER_ID, deletedAt: null },
-      select: { userId: true },
+    // コメントが problem に紐付いていること
+    const problem = body.data.problems[0];
+    expect(problem.comments).toHaveLength(1);
+    expect(problem.comments[0].comment_id).toBe(301);
+    expect(problem.comments[0].content).toBe("コメント内容");
+    expect(problem.comments[0].commenter).toEqual({
+      user_id: MANAGER_USER_ID,
+      name: "上司A",
     });
+    // plan にコメントがないこと
+    expect(body.data.plans[0].comments).toEqual([]);
   });
 
   // DR-203: 権限エラー - 他のsalesユーザーの日報は取得できない（sales）
@@ -206,23 +207,26 @@ describe("GET /api/v1/daily-reports/:report_id", () => {
     expect(mockCommentFindMany).not.toHaveBeenCalled();
   });
 
-  // DR-204: 権限エラー - 部下でないユーザーの日報は取得できない（manager）
-  it("DR-204: managerユーザーが部下でないユーザーの日報を取得しようとすると403を返す", async () => {
-    // 部下なし（自分以外）、日報の所有者は SALES_USER_ID
-    mockUserFindMany.mockResolvedValue([] as never);
-    // 日報の userId は SALES_USER_ID で、manager 自身(5)とは異なる
-    mockFindUnique.mockResolvedValue({
-      ...mockReport,
-      userId: SALES_USER_ID,
-    } as never);
+  // DR-204: 正常系 - 上長が部下の日報を取得できる（manager）
+  it("DR-204: managerユーザーが部下の日報詳細を取得すると200を返す", async () => {
+    // 部下として SALES_USER_ID を返す
+    mockUserFindMany.mockResolvedValue([
+      { userId: SALES_USER_ID },
+    ] as never);
 
     const req = makeRequest(42, managerToken);
     const res = await GET(req, makeParams(42));
     const body = await res.json();
 
-    expect(res.status).toBe(403);
-    expect(body.error.code).toBe("FORBIDDEN");
-    expect(mockCommentFindMany).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(body.data.report_id).toBe(42);
+    expect(body.data.user.user_id).toBe(SALES_USER_ID);
+
+    // 部下照会クエリが正しく呼ばれること
+    expect(mockUserFindMany).toHaveBeenCalledWith({
+      where: { managerId: MANAGER_USER_ID, deletedAt: null },
+      select: { userId: true },
+    });
   });
 
   // DR-205: Not Found - 存在しない日報IDを指定した場合は404を返す
@@ -237,8 +241,21 @@ describe("GET /api/v1/daily-reports/:report_id", () => {
     expect(body.error.code).toBe("NOT_FOUND");
   });
 
-  // DR-206: バリデーションエラー - 無効なreport_id
-  it("DR-206: report_idが文字列「abc」の場合は400 VALIDATION_ERRORを返す", async () => {
+  // DR-206: 未認証でリクエスト
+  it("DR-206: Authorizationヘッダーなしでリクエストすると401 UNAUTHORIZEDを返す", async () => {
+    const req = new NextRequest("http://localhost/api/v1/daily-reports/42", {
+      method: "GET",
+    });
+    const res = await GET(req, makeParams(42));
+    const body = await res.json();
+
+    expect(res.status).toBe(401);
+    expect(body.error.code).toBe("UNAUTHORIZED");
+    expect(mockFindUnique).not.toHaveBeenCalled();
+  });
+
+  // バリデーションエラー - 無効なreport_id
+  it("report_idが文字列「abc」の場合は400 VALIDATION_ERRORを返す", async () => {
     const req = makeRequest("abc", salesToken);
     const res = await GET(req, makeParams("abc"));
     const body = await res.json();
@@ -253,7 +270,7 @@ describe("GET /api/v1/daily-reports/:report_id", () => {
     expect(mockFindUnique).not.toHaveBeenCalled();
   });
 
-  it("DR-206b: report_idが「0」の場合は400 VALIDATION_ERRORを返す", async () => {
+  it("report_idが「0」の場合は400 VALIDATION_ERRORを返す", async () => {
     const req = makeRequest("0", salesToken);
     const res = await GET(req, makeParams("0"));
     const body = await res.json();
@@ -263,7 +280,7 @@ describe("GET /api/v1/daily-reports/:report_id", () => {
     expect(mockFindUnique).not.toHaveBeenCalled();
   });
 
-  it("DR-206c: report_idが「-1」の場合は400 VALIDATION_ERRORを返す", async () => {
+  it("report_idが「-1」の場合は400 VALIDATION_ERRORを返す", async () => {
     const req = makeRequest("-1", salesToken);
     const res = await GET(req, makeParams("-1"));
     const body = await res.json();
@@ -383,17 +400,23 @@ describe("GET /api/v1/daily-reports/:report_id", () => {
     expect(mockCommentFindMany).not.toHaveBeenCalled();
   });
 
-  // 追加: 未認証でリクエスト
-  it("Authorizationヘッダーなしでリクエストすると401 UNAUTHORIZEDを返す", async () => {
-    const req = new NextRequest("http://localhost/api/v1/daily-reports/42", {
-      method: "GET",
-    });
+  // 追加: managerが部下でないユーザーの日報を取得しようとすると403
+  it("managerユーザーが部下でないユーザーの日報を取得しようとすると403 FORBIDDENを返す", async () => {
+    // 部下なし（自分以外）、日報の所有者は SALES_USER_ID
+    mockUserFindMany.mockResolvedValue([] as never);
+    // 日報の userId は SALES_USER_ID で、manager 自身(5)とは異なる
+    mockFindUnique.mockResolvedValue({
+      ...mockReport,
+      userId: SALES_USER_ID,
+    } as never);
+
+    const req = makeRequest(42, managerToken);
     const res = await GET(req, makeParams(42));
     const body = await res.json();
 
-    expect(res.status).toBe(401);
-    expect(body.error.code).toBe("UNAUTHORIZED");
-    expect(mockFindUnique).not.toHaveBeenCalled();
+    expect(res.status).toBe(403);
+    expect(body.error.code).toBe("FORBIDDEN");
+    expect(mockCommentFindMany).not.toHaveBeenCalled();
   });
 
   // 追加: DB エラーは 500 に変換される
