@@ -55,16 +55,26 @@ interface ManagerUser {
 
 // ─── フォームスキーマ ─────────────────────────────────────────────────────────
 
-const baseSchema = z.object({
-  name: z.string().min(1, "氏名は必須です"),
-  email: z
-    .string()
-    .min(1, "メールアドレスは必須です")
-    .email("有効なメールアドレスを入力してください"),
-  password: z.string(),
-  role: z.enum(["sales", "manager"]),
-  manager_id: z.string(),
-})
+const baseSchema = z
+  .object({
+    name: z.string().min(1, "氏名は必須です"),
+    email: z
+      .string()
+      .min(1, "メールアドレスは必須です")
+      .email("有効なメールアドレスを入力してください"),
+    password: z.string(),
+    role: z.enum(["sales", "manager"]),
+    manager_id: z.string(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.role === "sales" && !data.manager_id) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "営業ロールの場合、上長の選択は必須です",
+        path: ["manager_id"],
+      })
+    }
+  })
 
 type FormValues = z.infer<typeof baseSchema>
 
@@ -112,7 +122,14 @@ export function UserForm(props: Props) {
               .string()
               .min(8, "パスワードは8文字以上で入力してください"),
           })
-        : baseSchema
+        : baseSchema.extend({
+            password: z
+              .string()
+              .refine(
+                (v) => v === "" || v.length >= 8,
+                "パスワードは8文字以上で入力してください"
+              ),
+          })
     ),
     defaultValues: {
       name: "",
@@ -504,6 +521,11 @@ export function UserForm(props: Props) {
                       </option>
                     ))}
                   </select>
+                  {errors.manager_id && (
+                    <p className="mt-1 text-xs text-destructive">
+                      {errors.manager_id.message}
+                    </p>
+                  )}
                 </div>
               )}
 
