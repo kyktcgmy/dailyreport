@@ -82,25 +82,8 @@ describe("PUT /api/v1/customers/:customer_id", () => {
     );
   });
 
-  // CST-202: assigned_user_idが未指定の場合はnullにセットされる（フル更新）
-  it("CST-202: assigned_user_idが未指定の場合はassignedUserIdがnullにセットされる", async () => {
-    const req = makePutRequest(
-      "10",
-      { name: "鈴木 一郎", company_name: "株式会社サンプル" },
-      managerToken
-    );
-    await PUT(req, makeContext("10"));
-
-    expect(mockUserFindUnique).not.toHaveBeenCalled();
-    expect(mockCustomerUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ assignedUserId: null }),
-      })
-    );
-  });
-
-  // CST-203: salesユーザーは403
-  it("CST-203: salesユーザーがリクエストすると403 FORBIDDENを返す", async () => {
+  // CST-202: salesユーザーは403
+  it("CST-202: salesユーザーがリクエストすると403 FORBIDDENを返す", async () => {
     const req = makePutRequest(
       "10",
       { name: "鈴木 一郎", company_name: "株式会社サンプル" },
@@ -114,7 +97,8 @@ describe("PUT /api/v1/customers/:customer_id", () => {
     expect(mockCustomerUpdate).not.toHaveBeenCalled();
   });
 
-  it("存在しない顧客IDを指定すると404 NOT_FOUNDを返す", async () => {
+  // CST-203: 存在しない顧客IDは404 NOT_FOUND
+  it("CST-203: 存在しない顧客IDを指定すると404 NOT_FOUNDを返す", async () => {
     mockCustomerFindUnique.mockResolvedValue(null);
 
     const req = makePutRequest(
@@ -128,6 +112,22 @@ describe("PUT /api/v1/customers/:customer_id", () => {
     expect(res.status).toBe(404);
     expect(body.error.code).toBe("NOT_FOUND");
     expect(mockCustomerUpdate).not.toHaveBeenCalled();
+  });
+
+  it("assigned_user_idが未指定の場合はassignedUserIdがnullにセットされる", async () => {
+    const req = makePutRequest(
+      "10",
+      { name: "鈴木 一郎", company_name: "株式会社サンプル" },
+      managerToken
+    );
+    await PUT(req, makeContext("10"));
+
+    expect(mockUserFindUnique).not.toHaveBeenCalled();
+    expect(mockCustomerUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ assignedUserId: null }),
+      })
+    );
   });
 
   it("customer_idに'abc'を指定すると400 VALIDATION_ERRORを返す", async () => {

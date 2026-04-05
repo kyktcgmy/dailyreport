@@ -91,8 +91,7 @@ describe("GET /api/v1/customers", () => {
     expect(body.data[0].assigned_user).toEqual({ user_id: 1, name: "山田 太郎" });
   });
 
-  // CST-002: managerユーザーが顧客一覧を取得
-  it("CST-002: managerユーザーがリクエストすると顧客一覧を200で返す", async () => {
+  it("managerユーザーがリクエストすると顧客一覧を200で返す", async () => {
     const customers = [makeCustomer({ customerId: 10 }), makeCustomer({ customerId: 11, name: "田中 花子", companyName: "株式会社テスト" })];
     mockCount.mockResolvedValue(2);
     mockFindMany.mockResolvedValue(customers as never);
@@ -105,8 +104,70 @@ describe("GET /api/v1/customers", () => {
     expect(body.data).toHaveLength(2);
   });
 
-  // CST-003: ページネーションが正しく返される
-  it("CST-003: page=2, per_page=5でリクエストすると正しいpaginationオブジェクトを200で返す", async () => {
+  // CST-002: 顧客名で部分一致検索
+  it("CST-002: nameクエリパラメータを指定するとcontains条件で絞り込まれる", async () => {
+    const customer = makeCustomer({ name: "鈴木 一郎" });
+    mockCount.mockResolvedValue(1);
+    mockFindMany.mockResolvedValue([customer] as never);
+
+    const req = makeRequest({ name: "鈴木" }, salesToken);
+    const res = await GET(req);
+
+    expect(res.status).toBe(200);
+    expect(mockFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ name: { contains: "鈴木" } }),
+      })
+    );
+  });
+
+  // CST-003: 会社名で部分一致検索
+  it("CST-003: company_nameクエリパラメータを指定するとcontains条件で絞り込まれる", async () => {
+    const customer = makeCustomer({ companyName: "株式会社サンプル" });
+    mockCount.mockResolvedValue(1);
+    mockFindMany.mockResolvedValue([customer] as never);
+
+    const req = makeRequest({ company_name: "サンプル" }, salesToken);
+    const res = await GET(req);
+
+    expect(res.status).toBe(200);
+    expect(mockFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ companyName: { contains: "サンプル" } }),
+      })
+    );
+  });
+
+  // CST-004: 担当営業で絞り込み
+  it("CST-004: assigned_user_idを指定すると担当営業で絞り込まれる", async () => {
+    const customer = makeCustomer({ assignedUser: { userId: 3, name: "佐藤 次郎" } });
+    mockCount.mockResolvedValue(1);
+    mockFindMany.mockResolvedValue([customer] as never);
+
+    const req = makeRequest({ assigned_user_id: "3" }, salesToken);
+    const res = await GET(req);
+
+    expect(res.status).toBe(200);
+    expect(mockFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ assignedUserId: 3 }),
+      })
+    );
+  });
+
+  // CST-005: 未認証でリクエストすると401 UNAUTHORIZED
+  it("CST-005: 未認証でリクエストすると401 UNAUTHORIZEDを返す", async () => {
+    const req = makeRequest(); // トークンなし
+
+    const res = await GET(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(401);
+    expect(body.error.code).toBe("UNAUTHORIZED");
+    expect(mockFindMany).not.toHaveBeenCalled();
+  });
+
+  it("page=2, per_page=5でリクエストすると正しいpaginationオブジェクトを200で返す", async () => {
     mockCount.mockResolvedValue(12);
     mockFindMany.mockResolvedValue([makeCustomer({ customerId: 6 }), makeCustomer({ customerId: 7 })] as never);
 
@@ -125,40 +186,6 @@ describe("GET /api/v1/customers", () => {
     );
   });
 
-  // CST-004: nameフィルタが正しく適用される
-  it("CST-004: nameクエリパラメータを指定するとcontains条件で絞り込まれる", async () => {
-    const customer = makeCustomer({ name: "鈴木 一郎" });
-    mockCount.mockResolvedValue(1);
-    mockFindMany.mockResolvedValue([customer] as never);
-
-    const req = makeRequest({ name: "鈴木" }, salesToken);
-    const res = await GET(req);
-
-    expect(res.status).toBe(200);
-    expect(mockFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ name: { contains: "鈴木" } }),
-      })
-    );
-  });
-
-  // CST-005: assigned_user_idフィルタ
-  it("CST-005: assigned_user_idを指定すると担当営業で絞り込まれる", async () => {
-    const customer = makeCustomer({ assignedUser: { userId: 3, name: "佐藤 次郎" } });
-    mockCount.mockResolvedValue(1);
-    mockFindMany.mockResolvedValue([customer] as never);
-
-    const req = makeRequest({ assigned_user_id: "3" }, salesToken);
-    const res = await GET(req);
-
-    expect(res.status).toBe(200);
-    expect(mockFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ assignedUserId: 3 }),
-      })
-    );
-  });
-
   it("assigned_userがnullの顧客はassigned_userフィールドがnullで返される", async () => {
     const customer = makeCustomer({ assignedUser: null });
     mockCount.mockResolvedValue(1);
@@ -170,17 +197,6 @@ describe("GET /api/v1/customers", () => {
 
     expect(res.status).toBe(200);
     expect(body.data[0].assigned_user).toBeNull();
-  });
-
-  it("未認証でリクエストすると401 UNAUTHORIZEDを返す", async () => {
-    const req = makeRequest(); // トークンなし
-
-    const res = await GET(req);
-    const body = await res.json();
-
-    expect(res.status).toBe(401);
-    expect(body.error.code).toBe("UNAUTHORIZED");
-    expect(mockFindMany).not.toHaveBeenCalled();
   });
 
   it("per_page=200はmax(100)超過で400 VALIDATION_ERRORを返す", async () => {
@@ -213,19 +229,4 @@ describe("GET /api/v1/customers", () => {
     expect(body.error.code).toBe("INTERNAL_SERVER_ERROR");
   });
 
-  it("company_nameクエリパラメータを指定するとcontains条件で絞り込まれる", async () => {
-    const customer = makeCustomer({ companyName: "株式会社サンプル" });
-    mockCount.mockResolvedValue(1);
-    mockFindMany.mockResolvedValue([customer] as never);
-
-    const req = makeRequest({ company_name: "サンプル" }, salesToken);
-    const res = await GET(req);
-
-    expect(res.status).toBe(200);
-    expect(mockFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ companyName: { contains: "サンプル" } }),
-      })
-    );
-  });
 });
