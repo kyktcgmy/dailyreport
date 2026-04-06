@@ -136,7 +136,7 @@ export const PUT = withManagerRole(async (req: AuthenticatedRequest, ctx: RouteC
       name,
       email,
       role,
-      managerId: manager_id ?? null,
+      manager: manager_id != null ? { connect: { userId: manager_id } } : { disconnect: true },
     };
 
     if (password !== undefined) {

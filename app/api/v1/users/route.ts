@@ -128,7 +128,7 @@ export const POST = withManagerRole(async (req: AuthenticatedRequest) => {
         email,
         passwordHash,
         role,
-        managerId: manager_id ?? null,
+        manager: manager_id != null ? { connect: { userId: manager_id } } : undefined,
       },
       select: { userId: true },
     });
