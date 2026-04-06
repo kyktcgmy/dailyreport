@@ -165,7 +165,7 @@ async function getCommentCounts(
 // ============================================================
 
 const VisitRecordInputSchema = z.object({
-  customer_id: z.number({ required_error: "customer_id は必須です。" }).int().positive(),
+  customer_id: z.number({ error: "customer_id は必須です。" }).int().positive(),
   // [要修正-2] 有効な時刻範囲（00:00〜23:59）のみ受け付ける
   visited_at: z
     .string()
@@ -187,7 +187,7 @@ const PlanInputSchema = z.object({
 const CreateDailyReportSchema = z.object({
   // [要修正-1] フォーマットに加えて実在する日付であることを検証する
   report_date: z
-    .string({ required_error: "report_date は必須です。" })
+    .string({ error: "report_date は必須です。" })
     .regex(/^\d{4}-\d{2}-\d{2}$/, "report_date は YYYY-MM-DD 形式で入力してください。")
     .refine(
       (val) => !isNaN(new Date(`${val}T00:00:00.000Z`).getTime()),

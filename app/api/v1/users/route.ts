@@ -87,7 +87,7 @@ const CreateUserBodySchema = z
     name: z.string().trim().min(1, "name は必須です。"),
     email: z.string().email("email の形式が正しくありません。"),
     password: z.string().min(8, "password は8文字以上で入力してください。"),
-    role: z.enum(["sales", "manager"], { required_error: "role は必須です。" }),
+    role: z.enum(["sales", "manager"], { error: "role は必須です。" }),
     manager_id: z.number().int().positive().optional(),
   })
   .refine(

@@ -16,7 +16,7 @@ import { prisma } from "@/lib/prisma";
 // ============================================================
 
 const VisitRecordInputSchema = z.object({
-  customer_id: z.number({ required_error: "customer_id は必須です。" }).int().positive(),
+  customer_id: z.number({ error: "customer_id は必須です。" }).int().positive(),
   visited_at: z
     .string()
     .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "visited_at は HH:MM 形式（00:00〜23:59）で入力してください。"),
@@ -36,7 +36,7 @@ const PlanInputSchema = z.object({
 
 const UpdateDailyReportSchema = z.object({
   report_date: z
-    .string({ required_error: "report_date は必須です。" })
+    .string({ error: "report_date は必須です。" })
     .regex(/^\d{4}-\d{2}-\d{2}$/, "report_date は YYYY-MM-DD 形式で入力してください。")
     .refine(
       (val) => !isNaN(new Date(`${val}T00:00:00.000Z`).getTime()),
