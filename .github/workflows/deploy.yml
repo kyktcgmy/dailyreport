@@ -55,7 +55,7 @@ jobs:
         run: npx prisma generate
 
       - name: Run tests
-        run: npm run test
+        run: npx vitest run
 
   build-and-deploy:
     name: Build and Deploy to Cloud Run
