@@ -5,7 +5,8 @@ import { Pool } from "pg";
 function createPrismaClient(): PrismaClient {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
-    throw new Error("DATABASE_URL 環境変数が設定されていません。");
+    // ビルド時はDATABASE_URLが不要なのでデフォルトクライアントを返す
+    return new PrismaClient();
   }
   const pool = new Pool({ connectionString });
   const adapter = new PrismaPg(pool);
