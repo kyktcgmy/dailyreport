@@ -13,6 +13,9 @@ RUN npx prisma generate
 
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# ビルド時はダミーのDATABASE_URLを設定（実際の接続はRuntime時にSecret Managerから取得）
+ENV DATABASE_URL="postgresql://dummy:dummy@localhost/dummy"
+
 RUN npm run build
 
 # Stage 2: Runner
