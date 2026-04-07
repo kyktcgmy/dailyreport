@@ -79,7 +79,7 @@ describe("POST /api/v1/users", () => {
           name: "山田 太郎",
           email: "taro@example.com",
           role: "sales",
-          managerId: MANAGER_USER_ID,
+          manager: { connect: { userId: MANAGER_USER_ID } },
           passwordHash: "$2b$10$hashedpassword",
         }),
       })
@@ -101,7 +101,7 @@ describe("POST /api/v1/users", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           role: "manager",
-          managerId: null,
+          manager: undefined,
         }),
       })
     );
