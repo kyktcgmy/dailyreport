@@ -55,26 +55,28 @@ interface ManagerUser {
 
 // ─── フォームスキーマ ─────────────────────────────────────────────────────────
 
-const baseSchema = z
-  .object({
-    name: z.string().min(1, "氏名は必須です"),
-    email: z
-      .string()
-      .min(1, "メールアドレスは必須です")
-      .email("有効なメールアドレスを入力してください"),
-    password: z.string(),
-    role: z.enum(["sales", "manager"]),
-    manager_id: z.string(),
-  })
-  .superRefine((data, ctx) => {
-    if (data.role === "sales" && !data.manager_id) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "営業ロールの場合、上長の選択は必須です",
-        path: ["manager_id"],
-      })
-    }
-  })
+const baseObjectSchema = z.object({
+  name: z.string().min(1, "氏名は必須です"),
+  email: z
+    .string()
+    .min(1, "メールアドレスは必須です")
+    .email("有効なメールアドレスを入力してください"),
+  password: z.string(),
+  role: z.enum(["sales", "manager"]),
+  manager_id: z.string(),
+})
+
+const managerRefine = (data: z.infer<typeof baseObjectSchema>, ctx: z.RefinementCtx) => {
+  if (data.role === "sales" && !data.manager_id) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "営業ロールの場合、上長の選択は必須です",
+      path: ["manager_id"],
+    })
+  }
+}
+
+const baseSchema = baseObjectSchema.superRefine(managerRefine)
 
 type FormValues = z.infer<typeof baseSchema>
 
@@ -117,19 +119,23 @@ export function UserForm(props: Props) {
   } = useForm<FormValues>({
     resolver: zodResolver(
       isNew
-        ? baseSchema.extend({
-            password: z
-              .string()
-              .min(8, "パスワードは8文字以上で入力してください"),
-          })
-        : baseSchema.extend({
-            password: z
-              .string()
-              .refine(
-                (v) => v === "" || v.length >= 8,
-                "パスワードは8文字以上で入力してください"
-              ),
-          })
+        ? baseObjectSchema
+            .extend({
+              password: z
+                .string()
+                .min(8, "パスワードは8文字以上で入力してください"),
+            })
+            .superRefine(managerRefine)
+        : baseObjectSchema
+            .extend({
+              password: z
+                .string()
+                .refine(
+                  (v) => v === "" || v.length >= 8,
+                  "パスワードは8文字以上で入力してください"
+                ),
+            })
+            .superRefine(managerRefine)
     ),
     defaultValues: {
       name: "",
